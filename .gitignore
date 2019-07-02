@@ -1,0 +1,17 @@
+node_modules
+*.orig
+*.log
+.DS_Store
+Thumbs.db
+
+.env*
+!.env.example
+stats.json
+public/assets
+build
+data/schema.json
+tmp/*
+!tmp/.gitkeep
+html/snap.html
+*.tap
+junit*.xml

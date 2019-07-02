@@ -1,0 +1,57 @@
+Working with JSONB columns in Postgres is a bit weird.
+
+In our case, the JSON data being loaded into Postgres by SORLoader is fairl complex. The reginfo data,
+which is one key in the top-level json hash, consists of a hash of arrays of hashes
+
+The reginfo data is the data we'll be mining with Grouper to create auto-populated course, section
+plan, and term groups
+
+The RegInfo data looks like this:
+
+RegInfo
+  |____ Program [
+  |                {
+  |                  name: BUSMOTMBA,
+  |                  type: MSR
+  |                },
+  |                {
+  |                  name: yyy,
+  |                  type: yyy
+  |                }
+  |              ]
+  |____ Affiliation [
+  |                    "GRAD"
+  |                  ]
+  |
+  |____ Course [
+                 {
+                    grp: BUS,
+                    crsename: BUS
+                    crsenum: 758
+                    sect: G100,
+                    semester: 1194
+                    status: E|W|?,
+                    statusreason: ENRL
+
+
+Note that this data is subject to change if/when we get more data from the SIMS feed. The beauty if JSON
+is that no changes do the database schema are needed, but tweaks to the Views or SQL queries definitely
+will be
+
+Here are a few example SQL queries using Postgres's native json datatypes
+                     
+Ex: Produce a table of SFUIDs, course name/num/sect for a given term - basically all enrollments for a term:
+SELECT sfuid,c->>'crsename' as course, c->>'crsenum' as coursenum, c->>'sect' AS section FROM sorstudents AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c WHERE c->>'semester' = '1174';
+
+How it works:
+  - "userdata" is the name of our JSONB column that holds all JSON data for a student record
+  - the "->" operator means return the JSON below the associated key, so "userdata->'reginfo'->'course' returns a JSONB array of all of the courses a student is enrolled in
+  - the jsonb_array_elements built-in Postgres function returns a table values in a JSONB array. In this case, each value will itself be a JSON object (the course hash)
+  - the WHERE clause searches the resulting array of objects for one where the semester key contains a value of '1174'
+  - the "->>" operator means "return the text value associated with the json key. So "c->>'crsename'" returns the value of crsename
+
+Ex: Fetch all Program names
+SELECT p->>'name' AS name,p->>'type' AS type FROM sorstudents AS t, jsonb_array_elements(t.userdata->'reginfo'->'program') AS p GROUP BY name,type;
+
+Ex: Fetch all active students and their associated Academic Plans
+select sfuid,p->>'name' as program from sorstudents as t, jsonb_array_elements(t.userdata->'reginfo'->'program') as p where t.status='active';

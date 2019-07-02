@@ -1,0 +1,22 @@
+{
+  "name": "sorloader",
+  "version": "1.0.0",
+  "description": "Loader for the SORObject store",
+  "main": "loader.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sfu/SORLoader.git"
+  },
+  "author": "Steve Hillman <hillman@sfu.ca>",
+  "license": "ISC",
+  "dependencies": {
+    "eyes": "^0.1.8",
+    "knex": "^0.17.6",
+    "p-queue": "^6.0.2",
+    "pg": "^7.11.0",
+    "xml2js": "^0.4.19"
+  }
+}
