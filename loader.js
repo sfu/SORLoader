@@ -3,14 +3,7 @@ const pg = require('pg')
 const fs = require('fs')
 const crypto = require('crypto')
 const hash = crypto.createHash
-const environment = process.env.NODE_ENV || 'development'
-const dbconfig = require('./knexfile')[environment];    // require environment's settings from knexfile
-const knex = require('knex')(dbconfig);
-
-// To allow us to limit the concurrency of async tasks, so we don't overwhelm the DB
-const {default: PQueue} = require('p-queue');
-const queue = new PQueue({concurrency: 5});
-
+const db = require('./db')
 
 // For debugging purposes
 var inspect = require('eyes').inspector({maxLength: false})
@@ -21,25 +14,19 @@ var students
 var sfuids_present = []
 var students_in_db = new Map
 var students_loaded = false
-var updated_students = 0
-var reactivated_students = 0
-var inserted_students = 0
-var removed_students = 0
+var updates = {
+                updated: 0,
+                reactivated: 0,
+                inserted: 0,
+                removed: 0
+            }
 
 var async_processed=0
-queue.on('active', () => {
-    if (++async_processed % 1000 === 0 || queue.size === 0) {
-        console.log(`Working on item ${async_processed}.  Size: ${queue.size}  Pending: ${queue.pending}`);
+db.queue.on('active', () => {
+    if (++async_processed % 1000 === 0 || db.queue.size === 0) {
+        console.log(`Working on item ${async_processed}.  Size: ${db.queue.size}  Pending: ${db.queue.pending}`);
     }
 });
-
-// Load existing active students from the DB
-// try {
-//     await loadFromDb()
-// } catch(err) {
-//     console.log(err)
-//     throw new Error("Can't continue")
-// }
 
 // Suck in the import file
 var stripPrefix = xml2js.processors.stripPrefix
@@ -55,6 +42,7 @@ var parser = new xml2js.Parser( {
 
 fs.readFile(importFile, async function(err, data) {
     // Load existing active students from the DB
+    console.log("Updates: " + inspect(updates))
     await loadFromDb()
     console.log("Loading XML extract from " + importFile)
     parser.parseString(data, async function (err, extract) {
@@ -68,14 +56,13 @@ fs.readFile(importFile, async function(err, data) {
             students = extract.student
             await processImport()
         }
-        await queue.onIdle()
+        await db.queue.onIdle()
             console.log('Done')
-            console.log('Students with updates:      ' + updated_students)
-            console.log('Students reactivated:       ' + reactivated_students)
-            console.log('New students added:         ' + inserted_students)
-            console.log('Students removed from feed: ' + removed_students)
-//        console.log(process._getActiveHandles())
-//        console.log(process._getActiveRequests())
+            console.log('Students with updates:      ' + updates.updated)
+            console.log('Students reactivated:       ' + updates.reactivated)
+            console.log('New students added:         ' + updates.inserted)
+            console.log('Students removed from feed: ' + updates.removed)
+            console.log(inspect(updates))
     });
 });
 
@@ -94,7 +81,6 @@ function normalize(student) {
     if (typeof student.reginfo.course !== 'undefined' && !Array.isArray(student.reginfo.course)) {
         student.reginfo.course = [student.reginfo.course]
     }
-    
 }
 
 // Generate an MD5 hash of the JSONified student object and store it in the object
@@ -120,7 +106,7 @@ async function processImport() {
     
     students.forEach(async (student) => {
         if (!students_in_db.has(student.sfuid) || students_in_db.get(student.sfuid) !== student.hash) {
-            await queue.add(() => { updateDbForStudent(student) })
+            await updateDbForStudent(student)
         }
     })
     if (students_in_db.size > 0) {
@@ -129,14 +115,9 @@ async function processImport() {
             if (!sfuids_present.includes(sfuid)) {
                 // Student is no longer in SoR feed. Set to inactive
                 try {
-                    var rows = await queue.add(async () => { 
-                        return knex('sorstudents')
-                        .returning('id')
-                        .where({sfuid: sfuid})
-                        .update({status:'inactive'})
-                    })
+                    var rows = await db.updateSorObject({sfuid: sfuid},{status:'inactive'})        
                     if (rows.length) {
-                            removed_students++
+                            updates.removed++
                     }
                     else { console.log("what the..?")}
                 } catch(err) {
@@ -150,9 +131,7 @@ async function processImport() {
 
 async function loadFromDb() {  
     try {
-        var rows = await knex('sorstudents')
-            .select('sfuid','hash')
-            .where({status: 'active'})
+        var rows = await db.getSorObjects(['sfuid','hash'],{status:'active'})
         if (rows != null) {
             rows.forEach((row) => {
                 students_in_db.set(row.sfuid,row.hash)
@@ -169,95 +148,58 @@ async function loadFromDb() {
 }
 
 async function updateDbForStudent(student) {
-    if (students_in_db.has(student.sfuid)) {
-        try {
+    var rows
+    var update_type = "updated"
+    try {
+        if (students_in_db.has(student.sfuid)) {
             // Update an existing active student's record
-            rows = await queue.add(async () => {
-                return knex('sorstudents')
-                .returning('id')
-                .where({sfuid: student.sfuid})
-                .update({
-                    hash: student.hash,
-                    lastname: student.lastname,
-                    firstnames: student.firstnames,
-                    userdata: JSON.stringify(student)
-                })
-            })
-            if (rows.length) {
-                updated_students++
-                if ((updated_students % 1000) == 0 ) {
-                    console.log("Update got here: " + updated_students)
-                }
-            }
-        } catch(err) {
-            console.log("Error updating student: " + student.sfuid)
-            console.log(err.message)
+            rows = await db.updateSorObject(
+                            {sfuid: student.sfuid},
+                            {
+                                hash: student.hash,
+                                lastname: student.lastname,
+                                firstnames: student.firstnames,
+                                userdata: JSON.stringify(student)
+                            })
         }
-    }
-    else {
-        // Check whether the student exists in the DB at all yet
-        try {
-            var rows = await queue.add(async () => { 
-                return knex('sorstudents')
-                .where({sfuid: student.sfuid})
-            })  
+        else {
+            // Check whether the student exists in the DB at all yet
+            rows = await db.getSorObjects('id',{sfuid: student.sfuid})  
             if ( rows.length > 0) {
+                update_type = "reactivated"
                 // Student is in the DB but inactive. Update
-                try {
-                    rows = await queue.add(async () => {
-                        return knex('sorstudents')
-                        .where({sfuid: student.sfuid})
-                        .update({
-                            status: 'active',
-                            hash: student.hash,
-                            lastname: student.lastname,
-                            firstnames: student.firstnames,
-                            userdata: JSON.stringify(student)
-                        })
-                    })
-                    if (rows.length) {
-                        reactivated_students++
-                        if ((reactivated_students % 1000) == 0 ) {
-                            console.log("Update from inactive got here: " + updated_students)
-                        }
-                    }
-                } catch(err) {
-                    console.log("Error updating student: " + student.sfuid)
-                    console.log(err.message)
-                }
+                    rows = await db.updateSorObject({sfuid: student.sfuid},{
+                                    status: 'active',
+                                    hash: student.hash,
+                                    lastname: student.lastname,
+                                    firstnames: student.firstnames,
+                                    userdata: JSON.stringify(student)
+                                })
                 // TODO: If there are any other actions to kick off when a student re-appears, do it here
             }
             else {
                 // Student not in DB. Insert
-                try {
-                    rows = await queue.add(async () => {
-                        return knex('sorstudents')
-                        .returning('id')
-                        .insert({
-                            sfuid: student.sfuid,
-                            status: 'active',
-                            hash: student.hash,
-                            lastname: student.lastname,
-                            firstnames: student.firstnames,
-                            source: 'SIMS',
-                            userdata: JSON.stringify(student)
-                        })
+                update_type = "inserted"
+                rows = await db.addSorObject({
+                        sfuid: student.sfuid,
+                        status: 'active',
+                        hash: student.hash,
+                        lastname: student.lastname,
+                        firstnames: student.firstnames,
+                        source: 'SIMS',
+                        userdata: JSON.stringify(student)
                     })
-                    if (rows.length > 0) { 
-                        inserted_students++
-                        if ((inserted_students % 1000) == 0) {
-                            console.log("then got here: " + inserted_students)
-                        }
-                    }
-                    
-                } catch(err) {
-                    console.log("Error inserting student: " + student.sfuid)
-                    console.log(err.message)
-                }
             }
-        } catch(err) {
-            console.log("Error searching for student: " + student.sfuid)
-            console.log(err.message)   
         }
-    } 
+        if (rows.length > 0) {
+            updates[update_type]++
+            //console.log(update_type + " = " + updates[update_type])
+            if ((updates[update_type] % 1000) == 0) {
+                console.log(update_type + " " + updates[update_type] + " users")
+            }
+        }
+    } catch(err) {
+        console.log("Error processing user: " + student.sfuid)
+        console.log(err.message)   
+    }
 }
