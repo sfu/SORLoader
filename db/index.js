@@ -5,7 +5,7 @@ const knex = require('knex')(dbconfig);
 const {default: PQueue} = require('p-queue');
 const queue = new PQueue({concurrency: 5});
 
-const tablename = 'sorstudents'
+const tablename = 'sorpeople'
 
 async function updateSorObject(where, update) {
     return await queue.add(async () => { 
