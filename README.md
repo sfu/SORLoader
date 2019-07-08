@@ -1,9 +1,11 @@
-* SORLoader
+# SORLoader
 
 This repo is for a Node.js application to handle data imports into an SoR object store
 
 Usage:
-```node loader.js /path/to/import_file.xml```
+```
+node loader.js /path/to/import_file.xml
+```
 
 The loader currenrly supports registration, HR, and Instructor import data. It will determine
 what is being loaded based on the XML content
