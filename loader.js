@@ -211,7 +211,7 @@ async function processEmployeeImport() {
                     newperson.status = person.status
                 }
                 employees.set(person.sfuid,newperson)
-                inspect(newperson)
+                //inspect(newperson)
             }
         })
     })
