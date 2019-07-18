@@ -70,7 +70,8 @@ fs.readFile(importFile, 'utf8', async function(err, data) {
                 console.log("Extracted data unrecognized")
             }
         }
-        // await db.queue.onIdle()
+        await db.queue.onIdle()
+        // There has to be a better way, but the last DB action counter doesn't get updated until after we get here, so one of these counters may be off by one
         console.log('Done')
         console.log('Users with updates:      ' + updates.updated)
         console.log('Users reactivated:       ' + updates.reactivated)
