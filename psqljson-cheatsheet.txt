@@ -61,3 +61,66 @@ SELECT p->>'name' AS name,p->>'type' AS type FROM sorpeople AS t, jsonb_array_el
 
 Ex: Fetch all active students and their associated Academic Plans
 select sfuid,p->>'name' as program from sorpeople as t, jsonb_array_elements(t.userdata->'reginfo'->'program') as p where t.status='active';
+
+Ex: Same, but using the Uuid table too
+select u.uuid,p->>'name' as program from sorpeople as t, jsonb_array_elements(t.userdata->'reginfo'->'program') as p, sorpeople_uuid as u where t.status='active' and t.sfuid = u.sfuid;
+
+Views
+-----
+Grouper made use of Views into the Amaint database to structure the group data exactly the way Grouper needed it. We can do the same for the SoRObject data
+with simpler views, as almost everything is in one table.
+
+Amaint views:
+This view returns all course grouper groups and their corresponding reader and updater groups.
+ CREATE VIEW `grouper_course_group_all_query_v` 
+   AS select distinct concat_ws(':','course',`c`.`semester`,`c`.`crsename`,`c`.`crsenum`,'students_systemOfRecord') AS `group_name`,
+   concat('course:security:readers,course:security:',`c`.`crsename`,':readers') AS `readers`,
+   concat('course:security:updaters,course:security:',`c`.`crsename`,':updaters') AS `updaters`,
+   `c`.`crsename` AS `crsename`,
+   `c`.`crsenum` AS `crsenum`,
+   `c`.`semester` AS `semester` 
+   from ((`roster` `r` join `course` `c`) join `section` `s`) where ((`r`.`sectionid` = `s`.`oid`) and (`s`.`courseid` = `c`.`oid`)
+
+Retrieve the sections of a course
+ CREATE  VIEW `grouper_course_group_query_v` 
+   AS select distinct concat_ws(':','course',`c`.`semester`,`c`.`crsename`,`c`.`crsenum`,`s`.`section`,'students_systemOfRecord') AS `group_name`,
+   concat('course:security:readers,course:security:',`c`.`crsename`,':readers') AS `readers`,
+   concat('course:security:updaters,course:security:',`c`.`crsename`,':updaters') AS `updaters`,
+   `c`.`crsename` AS `crsename`,
+   `c`.`crsenum` AS `crsenum`,
+   `c`.`semester` AS `semester`,
+   `s`.`section` AS `section` 
+   from ((`roster` `r` join `course` `c`) join `section` `s`) where ((`r`.`sectionid` = `s`.`oid`) and (`s`.`courseid` = `c`.`oid`)) 
+
+This view returns all students in all courses, organized into grouper groups
+  CREATE  VIEW `grouper_course_list_all_v` 
+    AS select distinct concat_ws(':','course',`c`.`semester`,`c`.`crsename`,`c`.`crsenum`,'students_systemOfRecord') AS `group_name`,
+    `r`.`username` AS `SUBJECT_ID`,
+    `c`.`crsename` AS `crsename`,`
+    c`.`crsenum` AS `crsenum`,
+    `c`.`semester` AS `semester` 
+    from ((`roster` `r` join `course` `c`) join `section` `s`) where ((`r`.`sectionid` = `s`.`oid`) and (`s`.`courseid` = `c`.`oid`))
+
+Retrieve all students in all sections of a course.
+ CREATE VIEW `grouper_course_list_v` 
+   AS select distinct concat_ws(':','course',`c`.`semester`,`c`.`crsename`,`c`.`crsenum`,`s`.`section`,'students_systemOfRecord') AS `group_name`,
+   `r`.`username` AS `SUBJECT_ID`,
+   `c`.`crsename` AS `crsename`,
+   `c`.`crsenum` AS `crsenum`,
+   `c`.`semester` AS `semester` 
+   from ((`roster` `r` join `course` `c`) join `section` `s`) where ((`r`.`sectionid` = `s`.`oid`) and (`s`.`courseid` = `c`.`oid`))
+
+There are similar views to retrieve the instructors of courses, rather than students. These are used by Grouper to populate the Readers and Updaters groups.
+
+Let's translate one of these views into a Postgres view into the SoRObject table:
+
+CREATE OR REPLACE VIEW grouper_course_list_all_v AS 
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),c->>'crsenum','students_systemOfRecord') AS group_name,
+    u.uuid AS SUBJECT_ID,
+    LOWER(c->>'crsename') AS crsename,
+    c->>'crsenum' AS crsenum,
+    c->>'semester' AS semester
+    FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid;
+
+
+  
