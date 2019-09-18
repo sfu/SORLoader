@@ -70,7 +70,8 @@ fs.readFile(importFile, 'utf8', async function(err, data) {
                 console.log("Extracted data unrecognized")
             }
         }
-        // await db.queue.onIdle()
+        await db.queue.onIdle()
+        // There has to be a better way, but the last DB action counter doesn't get updated until after we get here, so one of these counters may be off by one
         console.log('Done')
         console.log('Users with updates:      ' + updates.updated)
         console.log('Users reactivated:       ' + updates.reactivated)
@@ -132,6 +133,7 @@ async function processStudentImport() {
                     var rows = await db.updateSorObject({sfuid: sfuid, source: 'SIMS'},{status:'inactive'})        
                     if (rows.length) {
                             updates.removed++
+                            console.log(sfuid + " removed from REG feed. Setting to inactive")
                     }
                     else { console.log("what the..?")}
                 } catch(err) {
@@ -169,7 +171,19 @@ async function processEmployeeImport() {
         }
         persons.forEach((person) => {
             //console.log("Processing " + person.sfuid)
+            // According to Amaint, these are the documented Status flags an employee could have in a job:
+            //  A - Active?
+            //  L - ? treat as active
+            //  P - ? treat as active
+            //  W - ? treat as active
+            //  U - ? treat as active
+            //  Q - Retired
+            //  R - Retired
+            //  T - Terminated?
+            //
+            // We will default to status == inactive but set to active if any job isn't in the 'T' state
             person.role = role
+            person.status = 'inactive'
             if (typeof person.job !== 'undefined') {
                 if (!Array.isArray(person.job)) {
                     person.job = [person.job]
@@ -181,17 +195,23 @@ async function processEmployeeImport() {
                     if ( typeof dept.deptname !== 'undefined') {
                         job.deptname = dept.deptname
                     }
+                    if (job.status !== 'T') {
+                        person.status = 'active'
+                    }
                 })
             }
             if (!employees.has(person.sfuid)) {
                 employees.set(person.sfuid,person)
             }
             else {
-                console.log("Adding job to " + person.sfuid)
+                //console.log("Adding job to " + person.sfuid)
                 let newperson = employees.get(person.sfuid)
                 newperson.job.push(...person.job)
+                if (newperson.status !== 'active') {
+                    newperson.status = person.status
+                }
                 employees.set(person.sfuid,newperson)
-                inspect(newperson)
+                //inspect(newperson)
             }
         })
     })
@@ -212,6 +232,7 @@ async function processEmployeeImport() {
                     var rows = await db.updateSorObject({sfuid: sfuid, source: 'HAP'},{status:'inactive'})        
                     if (rows.length) {
                             updates.removed++
+                            console.log(sfuid + " removed from HAP feed. Setting to inactive")
                     }
                     else { console.log("what the..?")}
                 } catch(err) {
@@ -302,6 +323,7 @@ async function processInstructorImport() {
                     var rows = await db.updateSorObject({sfuid: sfuid, source: 'SIMSINSTRUCT'},{status:'inactive'})        
                     if (rows.length) {
                             updates.removed++
+                            console.log(sfuid + " removed from Instructor feed. Setting to inactive")
                     }
                     else { console.log("what the..?")}
                 } catch(err) {
