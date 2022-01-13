@@ -6,22 +6,64 @@ const {default: PQueue} = require('p-queue');
 const queue = new PQueue({concurrency: 5});
 
 const tablename = 'sorpeople'
+const changelogtable = 'changelog'
 
 async function updateSorObject(where, update) {
-    return await queue.add(async () => { 
-        return knex(tablename).returning('id').where(where).update(update)
+    return queue.add(async () => {
+        let id    
+        try {
+            await knex.transaction(async (txn) => {
+                const olddata = await txn(tablename)
+                    .select('userdata')
+                    .where(where)
+                await txn(changelogtable)
+                    .insert({
+                        sfuid: where.sfuid,
+                        source: where.source,
+                        olduserdate: olddata,
+                        newuserdata: update.userdata
+                    })
+                id = await txn(tablename).returning('id').where(where).update(update)
+            })
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+        return id;
     })
 }
 
 async function getSorObjects(select,where) {
-    return await queue.add(async () => { 
+    return queue.add(async () => { 
         return knex(tablename).select(select).where(where)
     })
 }
 
 async function addSorObject(user) {
-    return await queue.add(async () => {
-        return knex(tablename).returning('id').insert(user)
+    return queue.add(async () => {
+        let id    
+        try {
+            await knex.transaction(async (txn) => {
+                await txn(changelogtable)
+                    .insert({
+                        sfuid: user.sfuid,
+                        source: user.source,
+                        olduserdate: '',
+                        newuserdata: user.userdata
+                    })
+                id = await txn(tablename).returning('id').insert(user)
+            })
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
+        return id;
+    })
+}
+
+async function addChangeLog(record) {
+    return queue.add(async () => {
+        return knex(changelogtable).returning('id').insert(record)
     })
 }
 
@@ -29,5 +71,6 @@ module.exports = {
     queue,
     updateSorObject,
     getSorObjects,
-    addSorObject
+    addSorObject,
+    addChangeLog
 }

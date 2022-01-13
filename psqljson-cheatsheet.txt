@@ -65,6 +65,11 @@ select sfuid,p->>'name' as program from sorpeople as t, jsonb_array_elements(t.u
 Ex: Same, but using the Uuid table too
 select u.uuid,p->>'name' as program from sorpeople as t, jsonb_array_elements(t.userdata->'reginfo'->'program') as p, sorpeople_uuid as u where t.status='active' and t.sfuid = u.sfuid;
 
+Ex: fetch all employee affiliations and output as Grouper names:
+select distinct concat_ws(':'::text,'basis:affiliations',j->>'affiliation') as group_name,u.uuid as "SUBJECT_ID" from sorpeople as t,sorpeople_uuid as u,jsonb_array_elements(t.userdata->'job') as j where j->>'status' <> 'T' and t.sfuid = u.sfuid;
+
+(note that this query returns *all* users in an affiliation, even if it's not set as their primary job in the HR feed)
+
 Views
 -----
 Grouper made use of Views into the Amaint database to structure the group data exactly the way Grouper needed it. We can do the same for the SoRObject data
@@ -123,4 +128,24 @@ CREATE OR REPLACE VIEW grouper_course_list_all_v AS
     FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid;
 
 
+Grouper Employees Views
+CREATE VIEW grouper_employees_v AS 
+  select distinct concat_ws(':'::text,'basis:affiliations',j->>'afflname') as group_name,
+  u.uuid as "SUBJECT_ID", 
+  j->>'status' as status, 
+  u.sfuid as sfuid  
+  FROM sorpeople as t,sorpeople_uuid as u,jsonb_array_elements(t.userdata->'job') as j where j->>'status' <> 'T'  and t.sfuid = u.sfuid;
+
+Grouper Departments View
+CREATE VIEW grouper_employees_v AS 
+  select distinct concat_ws(':'::text,'basis:depts:units',j->>'deptcode') as group_name,
+  u.uuid as "SUBJECT_ID", 
+  j->>'status' as status, 
+  u.sfuid as sfuid  
+  FROM sorpeople as t,sorpeople_uuid as u,jsonb_array_elements(t.userdata->'job') as j where j->>'status' <> 'T' and j->>'status' <> 'Q' and j->>'status' <> 'R'  and t.sfuid = u.sfuid;
   
+Grouper Academic Plans Views
+create view grouper_academic_plans_v as 
+  select distinct concat_ws(':'::text, 'course:plans',p->>'name') as group_name,
+  u.uuid as "SUBJECT_ID" 
+  from sorpeople as t, jsonb_array_elements(t.userdata->'reginfo'->'program') as p, sorpeople_uuid as u where t.status='active' and t.source = 'SIMS' and t.sfuid = u.sfuid;  

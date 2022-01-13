@@ -7,7 +7,7 @@ module.exports = {
     connection: {
       host: '127.0.0.1',
       user: 'sorloader',
-      password: 'xxxxxxword',
+      password: 'ALocalPassword',
       database: 'sorobject'
     },
     migrations: {
