@@ -4,6 +4,7 @@ const fs = require('fs')
 const crypto = require('crypto')
 const hash = crypto.createHash
 const db = require('./db')
+const { type } = require('os')
 
 // For debugging purposes
 var inspect = require('eyes').inspector({maxLength: false})
@@ -13,6 +14,7 @@ var importFile = process.argv[2]
 var students
 var depts
 var courses
+var uuids
 var employees = new Map
 var instructors = new Map
 var employees_in_db
@@ -40,36 +42,46 @@ var parser = new xml2js.Parser( {
             })
 
 fs.readFile(importFile, 'utf8', async function(err, data) {
-    // Load existing active students from the DB
-    console.log("Loading XML extract from " + importFile)
-    parser.parseString(data.replace(/&/g,'&amp;'), async function (err, extract) {
-        if (err !== null) {
-            console.log("Error parsing input. Can't continue. " + err);
-        }
-        else {
-            var timestamp = extract.$.Timestamp
-            // TODO: Compare timestamp against last processed one in DB and abort if older/same
-            console.log("Extract time stamp: " + timestamp)
-            if (extract.hasOwnProperty('student')) {
-                students = extract.student
-                students_in_db = await loadFromDb('SIMS')
-                await processStudentImport()
-            }
-            else if (extract.hasOwnProperty('department')) {
-                depts = extract.department
-                employees_in_db = await loadFromDb('HAP')
-                await processEmployeeImport()
-            }
-            else if (extract.hasOwnProperty('course')) {
-                courses = extract.course
-                //inspect(extract.course)
-                instructors_in_db = await (loadFromDb('SIMSINSTRUCT'))
-                await processInstructorImport()
+    if (data.startsWith('uuid')) {
+        // Process UUID import
+        uuids = data.toString().split('\n')
+        await processUuidImport();
+    }
+    else if (data.startsWith('DEPT')) {
+        // process DEPT import file
+    }
+    else {
+        // process XML file import
+        console.log("Loading XML extract from " + importFile)
+        parser.parseString(data.replace(/&/g,'&amp;'), async function (err, extract) {
+            if (err !== null) {
+                console.log("Error parsing input. Can't continue. " + err);
             }
             else {
-                console.log("Extracted data unrecognized")
+                var timestamp = extract.$.Timestamp
+                // TODO: Compare timestamp against last processed one in DB and abort if older/same
+                console.log("Extract time stamp: " + timestamp)
+                if (extract.hasOwnProperty('student')) {
+                    students = extract.student
+                    students_in_db = await loadFromDb('SIMS')
+                    await processStudentImport()
+                }
+                else if (extract.hasOwnProperty('department')) {
+                    depts = extract.department
+                    employees_in_db = await loadFromDb('HAP')
+                    await processEmployeeImport()
+                }
+                else if (extract.hasOwnProperty('course')) {
+                    courses = extract.course
+                    //inspect(extract.course)
+                    instructors_in_db = await (loadFromDb('SIMSINSTRUCT'))
+                    await processInstructorImport()
+                }
+                else {
+                    console.log("Extracted data unrecognized")
+                }
             }
-        }
+        });
         await db.queue.onIdle()
         // There has to be a better way, but the last DB action counter doesn't get updated until after we get here, so one of these counters may be off by one
         console.log('Done')
@@ -77,7 +89,7 @@ fs.readFile(importFile, 'utf8', async function(err, data) {
         console.log('Users reactivated:       ' + updates.reactivated)
         console.log('New Users added:         ' + updates.inserted)
         console.log('Users removed from feed: ' + updates.removed)
-    });
+    }
 });
 
 // Clean up some data fields in the student object.
@@ -151,6 +163,7 @@ async function processStudentImport() {
 // objects against the DB
 
 async function processEmployeeImport() {
+    let persons;
     depts.forEach((dept) => {
         let empls = dept.employees
         let role = 'employee'
@@ -267,7 +280,7 @@ async function processInstructorImport() {
                 }
                 sections.forEach((section) => {
                     if (typeof section.instructor !== 'undefined') {
-                        instructs = section.instructor
+                        let instructs = section.instructor
                         if (!Array.isArray(instructs)) {
                             instructs = [instructs]
                         }
@@ -276,7 +289,7 @@ async function processInstructorImport() {
                             if (instruct.id.length < 5 || instruct.id < 9999) {
                                 return
                             }
-                            instructor = {}
+                            let instructor = {}
                             instructor.sfuid = instruct.id
                             instructor.sections = 
                                 [
@@ -335,6 +348,24 @@ async function processInstructorImport() {
     }
 }
 
+async function processUuidImport() {
+    uuids.forEach(async (line) => {
+        let fields = line.split('\s+',2)
+        try {
+            // Check if a record already exists
+            let uuid = await db.getUuid({sfuid: fields[1]});
+            if (uuid == null || typeof uuid === 'undefined') {
+                // Nope. Add one
+                await db.addUuid({uuid: fields[0], sfuid: fields[1]});
+                updates.inserted++;
+            }
+        } catch(err) {
+            console.log("Error processing UUID entry for " + line);
+            console.log(err);
+        }
+    });
+}
+
 async function loadFromDb(source) {  
     var users_in_db = new Map
     try {
@@ -349,9 +380,8 @@ async function loadFromDb(source) {
         console.log("Error loading users from DB. Can't continue!")
         console.log(err)
         throw new Error("Something went badly wrong!");
-        process.exit(1)
     }
-    return users_in_db
+    return users_in_db;
 }
 
 async function updateDbForPerson(person,source,isUpdate) {
@@ -359,7 +389,7 @@ async function updateDbForPerson(person,source,isUpdate) {
     var update_type = "updated"
     try {
         if (isUpdate) {
-            // Update an existing active student's record
+            // Update an existing active person's record
             rows = await db.updateSorObject(
                             {sfuid: person.sfuid, source: source},
                             {
@@ -368,13 +398,14 @@ async function updateDbForPerson(person,source,isUpdate) {
                                 firstnames: person.firstnames,
                                 userdata: JSON.stringify(person)
                             })
+            console.log("Updated '" + source + "' record for: " + person.sfuid)
         }
         else {
-            // Check whether the student exists in the DB at all yet
+            // Check whether the person exists in the DB at all yet
             rows = await db.getSorObjects('id',{sfuid: person.sfuid, source: source})  
             if ( rows.length > 0) {
                 update_type = "reactivated"
-                // Student is in the DB but inactive. Update
+                // Person is in the DB but inactive. Update
                     rows = await db.updateSorObject({sfuid: person.sfuid, source: source},{
                                     status: 'active',
                                     hash: person.hash,
@@ -382,10 +413,11 @@ async function updateDbForPerson(person,source,isUpdate) {
                                     firstnames: person.firstnames,
                                     userdata: JSON.stringify(person)
                                 })
-                // TODO: If there are any other actions to kick off when a student re-appears, do it here
+                // TODO: If there are any other actions to kick off when a person re-appears, do it here
+                console.log("Reactivated '" + source + "' record for: " + person.sfuid)
             }
             else {
-                // Student not in DB. Insert
+                // Person not in DB. Insert
                 update_type = "inserted"
                 rows = await db.addSorObject({
                         sfuid: person.sfuid,
@@ -396,6 +428,7 @@ async function updateDbForPerson(person,source,isUpdate) {
                         source: source,
                         userdata: JSON.stringify(person)
                     })
+                console.log("Added '" + source + "' record for: " + person.sfuid)
             }
         }
         if (rows.length > 0) {

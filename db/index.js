@@ -7,6 +7,7 @@ const queue = new PQueue({concurrency: 5});
 
 const tablename = 'sorpeople'
 const changelogtable = 'changelog'
+const uuidtable = 'sorpeople_uuid'
 
 async function updateSorObject(where, update) {
     return queue.add(async () => {
@@ -15,12 +16,12 @@ async function updateSorObject(where, update) {
             await knex.transaction(async (txn) => {
                 const olddata = await txn(tablename)
                     .select('userdata')
-                    .where(where)
+                    .where(where).first()
                 await txn(changelogtable)
                     .insert({
                         sfuid: where.sfuid,
                         source: where.source,
-                        olduserdate: olddata,
+                        olduserdata: olddata.userdata,
                         newuserdata: update.userdata
                     })
                 id = await txn(tablename).returning('id').where(where).update(update)
@@ -48,7 +49,7 @@ async function addSorObject(user) {
                     .insert({
                         sfuid: user.sfuid,
                         source: user.source,
-                        olduserdate: '',
+                        olduserdata: '{}',
                         newuserdata: user.userdata
                     })
                 id = await txn(tablename).returning('id').insert(user)
@@ -67,10 +68,24 @@ async function addChangeLog(record) {
     })
 }
 
+async function getUuid(where) {
+    return queue.add(async () => { 
+        return knex(uuidtable).select('uuid').where(where)
+    })
+}
+
+async function addUuid(record) {
+    return queue.add(async () => {
+        return knex(uuidtable).returning('uuid').insert(record)
+    })
+}
+
 module.exports = {
     queue,
     updateSorObject,
     getSorObjects,
     addSorObject,
-    addChangeLog
+    addChangeLog,
+    getUuid,
+    addUuid
 }
