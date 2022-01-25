@@ -20,6 +20,7 @@ var instructors = new Map
 var employees_in_db
 var instructors_in_db
 var students_in_db
+var uuids_in_db
 var sfuids_present = []
 var updates = {
                 updated: 0,
@@ -44,6 +45,7 @@ var parser = new xml2js.Parser( {
 fs.readFile(importFile, 'utf8', async function(err, data) {
     if (data.startsWith('uuid')) {
         // Process UUID import
+        uuids_in_db = await loadUuids();
         uuids = data.toString().split('\n')
         await processUuidImport();
     }
@@ -349,12 +351,11 @@ async function processInstructorImport() {
 }
 
 async function processUuidImport() {
-    uuids.forEach(async (line) => {
-        let fields = line.split('\s+',2)
+    uuids.filter(v => ! v.includes('external_idNo')).forEach(async (line) => {
+        let fields = line.split(/\s+/,2)
         try {
             // Check if a record already exists
-            let uuid = await db.getUuid({sfuid: fields[1]});
-            if (uuid == null || typeof uuid === 'undefined') {
+            if (! uuids_in_db.includes(fields[0])) {
                 // Nope. Add one
                 await db.addUuid({uuid: fields[0], sfuid: fields[1]});
                 updates.inserted++;
@@ -382,6 +383,21 @@ async function loadFromDb(source) {
         throw new Error("Something went badly wrong!");
     }
     return users_in_db;
+}
+
+async function loadUuids() {
+    let users_in_db
+    try {
+        var rows = await db.getUuid();
+        if (rows != null) {
+            users_in_db = Array.from(rows, row => row.uuid)
+        }
+    } catch(err) {
+        console.log("Error loading UUIDs from DB")
+        console.log(err)
+        throw new Error("Something went badly wrong!");
+    }
+    return users_in_db
 }
 
 async function updateDbForPerson(person,source,isUpdate) {
