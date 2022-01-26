@@ -69,7 +69,10 @@ async function addChangeLog(record) {
 }
 
 async function getUuid(where) {
-    return queue.add(async () => { 
+    return queue.add(async () => {
+        if (typeof where === 'undefined') {
+            return knex(uuidtable).select('uuid')
+        }
         return knex(uuidtable).select('uuid').where(where)
     })
 }

@@ -48,6 +48,8 @@ fs.readFile(importFile, 'utf8', async function(err, data) {
         uuids_in_db = await loadUuids();
         uuids = data.toString().split('\n')
         await processUuidImport();
+        await db.queue.onIdle()    
+        console.log('New Users added:         ' + updates.inserted)
     }
     else if (data.startsWith('DEPT')) {
         // process DEPT import file
@@ -83,14 +85,15 @@ fs.readFile(importFile, 'utf8', async function(err, data) {
                     console.log("Extracted data unrecognized")
                 }
             }
+            await db.queue.onIdle()
+            // There has to be a better way, but the last DB action counter doesn't get updated until after we get here, so one of these counters may be off by one
+            console.log('Done')
+            console.log('Users with updates:      ' + updates.updated)
+            console.log('Users reactivated:       ' + updates.reactivated)
+            console.log('New Users added:         ' + updates.inserted)
+            console.log('Users removed from feed: ' + updates.removed)
         });
-        await db.queue.onIdle()
-        // There has to be a better way, but the last DB action counter doesn't get updated until after we get here, so one of these counters may be off by one
-        console.log('Done')
-        console.log('Users with updates:      ' + updates.updated)
-        console.log('Users reactivated:       ' + updates.reactivated)
-        console.log('New Users added:         ' + updates.inserted)
-        console.log('Users removed from feed: ' + updates.removed)
+        
     }
 });
 
@@ -354,8 +357,11 @@ async function processUuidImport() {
     uuids.filter(v => ! v.includes('external_idNo')).forEach(async (line) => {
         let fields = line.split(/\s+/,2)
         try {
+            if (typeof fields === 'undefined' || fields[0] == null || fields[0].length == 0 || fields[1] == null || fields[1].length == 0 ) {
+                console.log("Skipping null entry: " + line);
+            }
             // Check if a record already exists
-            if (! uuids_in_db.includes(fields[0])) {
+            else if (! uuids_in_db.includes(fields[0])) {
                 // Nope. Add one
                 await db.addUuid({uuid: fields[0], sfuid: fields[1]});
                 updates.inserted++;
