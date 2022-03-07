@@ -136,8 +136,16 @@ CREATE VIEW grouper_employees_v AS
   u.sfuid as sfuid  
   FROM sorpeople as t,sorpeople_uuid as u,jsonb_array_elements(t.userdata->'job') as j where j->>'status' <> 'T'  and t.sfuid = u.sfuid;
 
+Grouper Employees View, replacing illegal chars in group_name:
+CREATE OR REPLACE VIEW grouper_employees_v AS
+  select distinct concat_ws(':'::text,'basis:affiliations',regexp_replace(lower(j.value ->> 'afflname'::text),'[^a-zA-Z0-9-]','_','g') ) as group_name,
+  u.uuid as "SUBJECT_ID",
+  j->>'status' as status,
+  u.sfuid as sfuid
+  FROM sorpeople as t,sorpeople_uuid as u,jsonb_array_elements(t.userdata->'job') as j where j->>'status' <> 'T'  and t.sfuid = u.sfuid and j.value->>'afflname'::text != '';
+
 Grouper Departments View
-CREATE VIEW grouper_employees_v AS 
+CREATE VIEW grouper_depts_v AS 
   select distinct concat_ws(':'::text,'basis:depts:units',j->>'deptcode') as group_name,
   u.uuid as "SUBJECT_ID", 
   j->>'status' as status, 
