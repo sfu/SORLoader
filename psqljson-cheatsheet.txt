@@ -75,7 +75,7 @@ Views
 Grouper made use of Views into the Amaint database to structure the group data exactly the way Grouper needed it. We can do the same for the SoRObject data
 with simpler views, as almost everything is in one table.
 
-Amaint views:
+These are the Amaint views as defined in the MySQL database:
 This view returns all course grouper groups and their corresponding reader and updater groups.
  CREATE VIEW `grouper_course_group_all_query_v` 
    AS select distinct concat_ws(':','course',`c`.`semester`,`c`.`crsename`,`c`.`crsenum`,'students_systemOfRecord') AS `group_name`,
@@ -120,12 +120,58 @@ There are similar views to retrieve the instructors of courses, rather than stud
 Let's translate one of these views into a Postgres view into the SoRObject table:
 
 CREATE OR REPLACE VIEW grouper_course_list_all_v AS 
-  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),c->>'crsenum','students_systemOfRecord') AS group_name,
-    u.uuid AS SUBJECT_ID,
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),LOWER(c->>'crsenum'),'students_systemOfRecord') AS group_name,
+    u.uuid AS "SUBJECT_ID",
     LOWER(c->>'crsename') AS crsename,
     c->>'crsenum' AS crsenum,
     c->>'semester' AS semester
     FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid;
+
+These views are also all needed for Grouper:
+
+CREATE OR REPLACE VIEW grouper_course_list_v AS 
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),LOWER(c->>'crsenum'),LOWER(c->>'sect'),'students_systemOfRecord') AS group_name,
+    u.uuid AS "SUBJECT_ID",
+    LOWER(c->>'crsename') AS crsename,
+    c->>'crsenum' AS crsenum,c->>'sect' as section,
+    c->>'semester' AS semester
+    FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid;
+
+
+CREATE OR REPLACE VIEW grouper_course_list_100level_v AS
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),'100-level','students_systemOfRecord') AS group_name,
+  u.uuid AS "SUBJECT_ID",
+  LOWER(c->>'crsename') AS crsename,
+  c->>'semester' AS semester
+  FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid and c->>'crsenum' < '200';
+
+CREATE OR REPLACE VIEW grouper_course_list_gradlevel_v AS
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),'100-level','students_systemOfRecord') AS group_name,
+  u.uuid AS "SUBJECT_ID",
+  LOWER(c->>'crsename') AS crsename,
+  c->>'semester' AS semester
+  FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid and c->>'crsenum' >= '500';
+
+CREATE OR REPLACE VIEW grouper_course_list_200level_v AS
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),'100-level','students_systemOfRecord') AS group_name,
+  u.uuid AS "SUBJECT_ID",
+  LOWER(c->>'crsename') AS crsename,
+  c->>'semester' AS semester
+  FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid and c->>'crsenum' >= '200' and c->>'crsenum' < '300';
+
+CREATE OR REPLACE VIEW grouper_course_list_300level_v AS
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),'100-level','students_systemOfRecord') AS group_name,
+  u.uuid AS "SUBJECT_ID",
+  LOWER(c->>'crsename') AS crsename,
+  c->>'semester' AS semester
+  FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid and c->>'crsenum' >= '300' and c->>'crsenum' < '400';
+
+CREATE OR REPLACE VIEW grouper_course_list_400level_v AS
+  select distinct concat_ws(':','course',c->>'semester',LOWER(c->>'crsename'),'100-level','students_systemOfRecord') AS group_name,
+  u.uuid AS "SUBJECT_ID",
+  LOWER(c->>'crsename') AS crsename,
+  c->>'semester' AS semester
+  FROM sorpeople AS t, jsonb_array_elements(t.userdata->'reginfo'->'course') AS c, sorpeople_uuid as u WHERE t.sfuid = u.sfuid and c->>'crsenum' >= '400' and c->>'crsenum' < '500';
 
 
 Grouper Employees Views
