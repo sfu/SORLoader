@@ -5,6 +5,7 @@ const crypto = require('crypto')
 const hash = crypto.createHash
 const db = require('./db')
 const { type } = require('os')
+const knexfile = require('./knexfile')
 
 // For debugging purposes
 var inspect = require('eyes').inspector({maxLength: false})
@@ -29,6 +30,17 @@ var updates = {
                 removed: 0
             }
 
+// Load the Grouper_Loader_Groups config from json file
+// The file must contain an array of JSON objects, each specified as such:
+// { view: "grouper_academic_plans_v",
+//   loader: "plans",
+//   hasSemester: false
+// } 
+// The 'hasTerm' property is optional. If present and true, it indicates that a 'semester' should be 
+// included in the WHERE clause to limit the results to the current semester
+var rawdata = fs.readFileSync('grouper-loader.json');
+var grouperLoaders = JSON.parse(rawdata);
+console.log('Loaded '+ grouperLoaders.length + ' GrouperLoader definitions')
 
 // Suck in the import file
 var stripPrefix = xml2js.processors.stripPrefix
@@ -50,6 +62,11 @@ fs.readFile(importFile, 'utf8', async function(err, data) {
         await processUuidImport();
         await db.queue.onIdle()    
         console.log('New Users added:         ' + updates.inserted)
+
+        // at the end of the UUID import, also process the GrouperLoader groups.
+        groups_in_db = await loadGrouperLoaderGroups();
+        await processGrouperLoaderGroups();
+        console.log('New LoaderGroups added:  ' + updates.groupsadded)
     }
     else if (data.startsWith('DEPT')) {
         // process DEPT import file
@@ -373,6 +390,57 @@ async function processUuidImport() {
     });
 }
 
+// For each object in the Grouper_loader.json file, do a DB query to get the
+// current list of groups in that loader's view. Add any missing groups to the grouper_loader_groups table
+// { view: "grouper_academic_plans_v",
+//   loader: "plans",
+//   hasSemester: false
+// } 
+async function processGrouperLoaderGroups() {
+    grouperLoaders.forEach((job) => {
+        viewgroups = new Array
+        var tmpgroups
+        if (job.hasSemester) {
+            [currentTermCode(),nextTermCode()].forEach((term) => {
+                tmpgroups = await db.getGrouperView(job.view,{semester: term})
+                viewgroups.push(tmpgroups)
+            })
+        } else {
+            tmpgroups = await db.getGrouperView(job.view)
+            viewgroups.push(tmpgroups) 
+        }
+        viewgroups.forEach((vgroup) => {
+            if (!groups_in_db.get(job.loader).includes(vgroup.group_name)) {
+                db.addGrouperLoaderGroup({group: vgroup.group_name, loader: job.loader})
+                updates.groupsadded++
+            }
+        })
+    })
+
+}
+
+// Load the contents of the grouper_loader table into a hash of arrays (one array per loader view)
+async function loadGrouperLoaderGroups() {
+    let groups_in_db = new Map
+    try {
+        var rows = await db.getGrouperLoaderGroups();
+        if (rows != null) {
+            rows.forEach((row) => {
+                if (!groups_in_db.has(row.loader)) {
+                    var groupArray = new Array
+                    groups_in_db.set(row.loader,groupArray)
+                }
+                groups_in_db.get(row.loader).push(row.group)
+            })
+        }
+    } catch(err) {
+        console.log("Error loading LoaderGroups from DB")
+        console.log(err)
+        throw new Error("Something went badly wrong!");
+    }
+    return groups_in_db
+}
+
 async function loadFromDb(source) {  
     var users_in_db = new Map
     try {
@@ -465,3 +533,20 @@ async function updateDbForPerson(person,source,isUpdate) {
         console.log(err.message)   
     }
 }
+
+var currentTermCode = function() {
+    var date = new Date();
+    var month = date.getMonth();
+    var centuryDigit = '1'; // I'll be long-dead before this is an issue
+    var yearDigits = date.getFullYear().toString().substr(-2);
+    var termDigit = month < 4 ? '1' : month >= 8 ? '7' : '4'
+
+    return centuryDigit + yearDigits + termDigit;
+};
+
+var nextTermCode = function() {
+    var curterm = currentTermCode();
+    var offset = curterm.charAt(3) === '7' ? 4 : 3;
+    var nextTerm = parseInt(curterm)+offset;
+    return nextTerm.toString();
+};

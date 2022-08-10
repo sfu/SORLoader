@@ -8,6 +8,7 @@ const queue = new PQueue({concurrency: 5});
 const tablename = 'sorpeople'
 const changelogtable = 'changelog'
 const uuidtable = 'sorpeople_uuid'
+const grouperloadertable = 'grouper_loader_groups'
 
 async function updateSorObject(where, update) {
     return queue.add(async () => {
@@ -83,6 +84,31 @@ async function addUuid(record) {
     })
 }
 
+async function getGrouperLoaderGroups(where) {
+    return queue.add(async () => {
+        if (typeof where === 'undefined') {
+            return knex(grouperloadertable).select(['group','loader'])
+        }
+        return knex(grouperloadertable).select(['group','loader']).where(where)
+    })
+}
+
+async function addGrouperLoaderGroup(record) {
+    return queue.add(async () => {
+        return knex(grouperloadertable).returning('group').insert(record)
+    })
+}
+async function getGrouperView(view,where) {
+    return queue.add(async () => {
+        if (typeof where === 'undefined') {
+            return knex(view).distinct().returning('group_name')
+        }
+        return knex(view).distinct().returning('group_name').distinct().where(where)
+    })
+}
+
+
+
 module.exports = {
     queue,
     updateSorObject,
@@ -90,5 +116,8 @@ module.exports = {
     addSorObject,
     addChangeLog,
     getUuid,
-    addUuid
+    addUuid,
+    getGrouperLoaderGroups,
+    addGrouperLoaderGroup,
+    getGrouperView
 }
