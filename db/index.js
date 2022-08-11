@@ -87,23 +87,23 @@ async function addUuid(record) {
 async function getGrouperLoaderGroups(where) {
     return queue.add(async () => {
         if (typeof where === 'undefined') {
-            return knex(grouperloadertable).select(['group','loader'])
+            return knex(grouperloadertable).select(['group_name','loader'])
         }
-        return knex(grouperloadertable).select(['group','loader']).where(where)
+        return knex(grouperloadertable).select(['group_name','loader']).where(where)
     })
 }
 
 async function addGrouperLoaderGroup(record) {
     return queue.add(async () => {
-        return knex(grouperloadertable).returning('group').insert(record)
+        return knex(grouperloadertable).returning('group_name').insert(record)
     })
 }
 async function getGrouperView(view,where) {
     return queue.add(async () => {
         if (typeof where === 'undefined') {
-            return knex(view).distinct().returning('group_name')
+            return knex.distinct().from(view).pluck('group_name')
         }
-        return knex(view).distinct().returning('group_name').distinct().where(where)
+        return knex.distinct().from(view).pluck('group_name').where(where)
     })
 }
 

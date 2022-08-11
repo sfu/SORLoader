@@ -78,13 +78,14 @@ CREATE OR REPLACE VIEW grouper_academic_plans_v as
   from sorpeople as t, jsonb_array_elements(t.userdata->'reginfo'->'program') as p, sorpeople_uuid as u where t.status='active' and t.source = 'SIMS' and t.sfuid = u.sfuid;  
 
 # Give Grouper user permission to access Views
-grant select on grouper_course_list_100level_v to grouperadmin;
-grant select on grouper_course_list_200level_v to grouperadmin;
-grant select on grouper_course_list_300level_v to grouperadmin;
-grant select on grouper_course_list_400level_v to grouperadmin;
-grant select on grouper_course_list_gradlevel_v to grouperadmin;
-grant select on grouper_course_list_all_v to grouperadmin;
-grant select on grouper_course_list_v to grouperadmin;
-grant select on grouper_employees_v to grouperadmin;
-grant select on grouper_depts_v to grouperadmin;
-grant select on grouper_academic_plans_v to grouperadmin;
+grant select on grouper_course_list_100level_v to grouperadmin,amaint;
+grant select on grouper_course_list_200level_v to grouperadmin,amaint;
+grant select on grouper_course_list_300level_v to grouperadmin,amaint;
+grant select on grouper_course_list_400level_v to grouperadmin,amaint;
+grant select on grouper_course_list_gradlevel_v to grouperadmin,amaint;
+grant select on grouper_course_list_all_v to grouperadmin,amaint;
+grant select on grouper_course_list_v to grouperadmin,amaint;
+grant select on grouper_employees_v to grouperadmin,amaint;
+grant select on grouper_depts_v to grouperadmin,amaint;
+grant select on grouper_academic_plans_v to grouperadmin,amaint;
+grant select on grouper_loader_groups to grouperadmin;

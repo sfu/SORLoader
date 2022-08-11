@@ -27,7 +27,8 @@ var updates = {
                 updated: 0,
                 reactivated: 0,
                 inserted: 0,
-                removed: 0
+                removed: 0,
+                groupsadded: 0
             }
 
 // Load the Grouper_Loader_Groups config from json file
@@ -397,25 +398,28 @@ async function processUuidImport() {
 //   hasSemester: false
 // } 
 async function processGrouperLoaderGroups() {
-    grouperLoaders.forEach((job) => {
+    for (const job of grouperLoaders)  {
         viewgroups = new Array
         var tmpgroups
         if (job.hasSemester) {
-            [currentTermCode(),nextTermCode()].forEach((term) => {
-                tmpgroups = await db.getGrouperView(job.view,{semester: term})
-                viewgroups.push(tmpgroups)
-            })
+            tmpgroups = await db.getGrouperView(job.view,{semester: currentTermCode()})
+            viewgroups.push(...tmpgroups)
+            tmpgroups = await db.getGrouperView(job.view,{semester: nextTermCode()})
+            viewgroups.push(...tmpgroups)       
         } else {
             tmpgroups = await db.getGrouperView(job.view)
-            viewgroups.push(tmpgroups) 
+            viewgroups.push(...tmpgroups) 
         }
         viewgroups.forEach((vgroup) => {
-            if (!groups_in_db.get(job.loader).includes(vgroup.group_name)) {
-                db.addGrouperLoaderGroup({group: vgroup.group_name, loader: job.loader})
+            if (!groups_in_db.has(job.loader)) {
+                groups_in_db.set(job.loader, new Array)
+            }
+            if (!groups_in_db.get(job.loader).includes(vgroup)) {
+                await db.addGrouperLoaderGroup({group: vgroup, loader: job.loader})
                 updates.groupsadded++
             }
         })
-    })
+    }
 
 }
 

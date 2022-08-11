@@ -1,0 +1,49 @@
+[
+    {
+        "loader": "plans",
+        "view": "grouper_academic_plans_v"
+    },
+    {
+        "loader": "depts",
+        "view": "grouper_depts_v"
+    },
+    {
+        "loader": "affiliations",
+        "view": "grouper_employees_v"
+    },
+    {
+        "loader": "all_courses",
+        "view": "grouper_course_list_all_v",
+        "hasSemester": true
+    },
+    {
+        "loader": "all_sections",
+        "view": "grouper_course_list_v",
+        "hasSemester": true
+    },
+    {
+        "loader": "100level",
+        "view": "grouper_course_list_100level_v",
+        "hasSemester": true
+    },
+    {
+        "loader": "200level",
+        "view": "grouper_course_list_200level_v",
+        "hasSemester": true
+    },
+    {
+        "loader": "300level",
+        "view": "grouper_course_list_300level_v",
+        "hasSemester": true
+    },
+    {
+        "loader": "400level",
+        "view": "grouper_course_list_400level_v",
+        "hasSemester": true
+    },
+    {
+        "loader": "gradlevel",
+        "view": "grouper_course_list_gradlevel_v",
+        "hasSemester": true
+    }
+]
