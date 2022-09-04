@@ -415,7 +415,7 @@ async function processGrouperLoaderGroups() {
                 groups_in_db.set(job.loader, new Array)
             }
             if (!groups_in_db.get(job.loader).includes(vgroup)) {
-                await db.addGrouperLoaderGroup({group: vgroup, loader: job.loader})
+                await db.addGrouperLoaderGroup({group_name: vgroup, loader: job.loader})
                 updates.groupsadded++
             }
         })
@@ -434,7 +434,7 @@ async function loadGrouperLoaderGroups() {
                     var groupArray = new Array
                     groups_in_db.set(row.loader,groupArray)
                 }
-                groups_in_db.get(row.loader).push(row.group)
+                groups_in_db.get(row.loader).push(row.group_name)
             })
         }
     } catch(err) {
