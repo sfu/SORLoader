@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "eyes": "^0.1.8",
-    "knex": "^0.19.5",
+    "knex": "^2.4.0",
     "p-queue": "^6.6.2",
     "pg": "^7.18.0",
     "xml2js": "^0.4.23"
